@@ -4,7 +4,7 @@ require "spec_helper"
 module Decidim::SpamSignal::Cops
   describe LockCopCommand::class do
     let(:organization) { create :organization }
-    let(:spam_cop) { create(:user, :admin, organization: organization) }
+    let(:spam_cop) { Decidim::SpamSignal::CopBot.get(organization) }
     let(:spammer) { create(:user, organization: organization) }
     let(:user) { create(:user, organization: organization) }
     let(:participatory_process) { create(:participatory_process, organization: organization) }
@@ -12,35 +12,77 @@ module Decidim::SpamSignal::Cops
     let(:dummy_resource) { create(:dummy_resource, component: component, author: user) }
     let(:target_content) { dummy_resource }
     let!(:comment) { create(:comment, commentable: target_content, author: spammer) }
-    let(:config) { Decidim::SpamSignal::Config.get_config(organization) }
+    let(:config) { {"sinalize_user_enabled" => false, "hide_comments_enabled" => false} }
+    let(:spam_content) { "spam and ham" }
 
-    context "when putting a user in lock" do
+
+    context "LockCopCommand.call with sinalize_user_enabled=false, hide_comments_enabled=false options" do
+      let(:config) { {"sinalize_user_enabled" => false, "hide_comments_enabled" => false} }
       it "set the handler_name to lock" do
         expect(LockCopCommand.handler_name).to eq("lock")
       end
 
       it "locks the user" do
         expect do
-          LockCopCommand.call(spammer, config, spam_cop)
+          LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
         end.to change { spammer.reload.access_locked? }.from(false).to(true)
       end
 
-      it "does send email instruction if config .is_email_unlockable" do
-        config = Decidim::SpamSignal::Config.get_config(organization)
-        config.update cops_settings: { lock: { is_email_unlockable: true } }
-        expect(spammer).to receive(:lock_access!) do |opts|
-          expect(opts.fetch(:send_instructions, true)).to eq(true)
-        end
-        LockCopCommand.call(spammer, config, spam_cop)
+      it "does not sinalize the user" do
+        expect do
+          LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        end.not_to change { Decidim::UserModeration.where(user: spammer).count }
       end
 
-      it "doesn't send email instruction if config not .is_email_unlockable" do
-        config = Decidim::SpamSignal::Config.get_config(organization)
-        config.update cops_settings: { lock: { is_email_unlockable: false } }
-        expect(spammer).to receive(:lock_access!) do |opts|
-          expect(opts.fetch(:send_instructions, true)).to eq(false)
-        end
-        LockCopCommand.call(spammer, config, spam_cop)
+      it "does not hide user's comments" do
+        LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        expect(comment.reload).not_to be_hidden
+      end
+      
+      it "does add a :base error on resource" do
+        expect(comment.errors).to receive(:add)
+        LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+      end
+    end
+
+    context "LockCopCommand.call with sinalize_user_enabled=true, hide_comments_enabled=false options" do
+      let(:config) { {"sinalize_user_enabled" => true, "hide_comments_enabled" => false} }
+      it "locks the user" do
+        expect do
+          LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        end.to change { spammer.reload.access_locked? }.from(false).to(true)
+      end
+
+      it "does sinalize the user" do
+        expect do
+          LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        end.to change { Decidim::UserModeration.where(user: spammer).count }.by(1)
+      end
+
+      it "does not hide user's comments" do
+        LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        expect(comment.reload).not_to be_hidden
+      end
+    end
+    context "LockCopCommand.call with sinalize_user_enabled=false, hide_comments_enabled=true options" do
+      let(:config) { {"sinalize_user_enabled" => false, "hide_comments_enabled" => true} }
+      it "locks the user" do
+        expect do
+          LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        end.to change { spammer.reload.access_locked? }.from(false).to(true)
+      end
+
+      it "does not sinalize the user" do
+        expect do
+          LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        end.not_to change { Decidim::UserModeration.where(user: spammer).count }
+      end
+
+      it "does hide user's comments" do
+        previous_comment = create(:comment, commentable: target_content, author: spammer)
+        LockCopCommand.call(comment.errors, spammer, config, spam_content, spam_cop)
+        expect(comment.reload).to be_hidden
+        expect(previous_comment.reload).to be_hidden
       end
     end
   end

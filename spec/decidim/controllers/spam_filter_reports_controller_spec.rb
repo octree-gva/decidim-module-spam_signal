@@ -17,11 +17,5 @@ module Decidim::SpamSignal::Admin
       get :index
       expect(subject).to render_template(:index)
     end
-
-    it "create a configuration for the organization" do
-      expect do
-        get :index
-      end.to change { Decidim::SpamSignal::Config.count }.by(1)
-    end
   end
 end

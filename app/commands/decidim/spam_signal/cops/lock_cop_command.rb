@@ -31,14 +31,15 @@ module Decidim
                 reportable: spam,
                 participatory_space: spam.participatory_space
               )
+              moderation.update(reported_content: spam.body[admin_reporter.locale]) if !moderation.reported_content && spam.body[admin_reporter.locale]
               Decidim::Report.create!(
-                moderation: moderation,
+                moderation: moderation.reload,
                 user: admin_reporter,
+                locale: admin_reporter.locale,
                 reason: "spam",
-                details: I18n.t("decidim.spam_signal.spam_signal_justification")
+                details: I18n.t("decidim.spam_signal.spam_signal_justification", default: "Automatic Spam Analysis fire an alert about this content")
               )
-              moderation.update!(report_count: moderation.report_count + 1)
-              Decidim::Admin::HideResource.call(spam.reload, admin_reporter)
+              moderation.update!(report_count: moderation.report_count + 1, hidden_at: Time.current)
             end
           end
 

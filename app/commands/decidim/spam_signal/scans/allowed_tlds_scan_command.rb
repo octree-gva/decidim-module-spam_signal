@@ -9,6 +9,7 @@ module Decidim
         end
 
         def call
+          return broadcast(:ok) if allowed_tlds_csv.empty?
           return broadcast(:ok) if all_allowed?
           broadcast(:not_allowed_tlds_found)
         end
@@ -22,7 +23,7 @@ module Decidim
           def allowed_tlds_csv
             @allowed_tlds_csv ||= (
               config["allowed_tlds_csv"] || ""
-            ).split(",").map(&:strip)
+            ).split(",").map(&:strip).filter {|tlds| !tlds.empty? }
           end
 
           def all_allowed?
@@ -33,7 +34,7 @@ module Decidim
             URI.extract(suspicious_content, ["http", "https", "", "mailto" ]).map do |uri|
               begin
                 (scheme, subdomain, host ) = URI.split(uri)
-                host
+                host || ""
               rescue URI::InvalidURIError
                 ""
               end

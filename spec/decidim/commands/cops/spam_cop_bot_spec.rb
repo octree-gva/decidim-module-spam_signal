@@ -22,6 +22,15 @@ describe Decidim::SpamSignal::CopBot::class do
       end.to change(Decidim::User, :count).by(0)
     end
 
+    it "Use a suffix on nickname if the bot nickname is taken, and create the bot user anyway" do
+      ENV["USER_BOT_EMAIL"] = "test@decidim.com"
+      create(:user, :admin, organization: organization, email: "test@me.com", nickname: "bot")
+      expect do
+        bot = Decidim::SpamSignal::CopBot.get(organization)
+        expect(bot.nickname).to eq("bot1")
+      end.to change(Decidim::User, :count).by(1)
+    end
+
     it "unblock the bot user if was blocked" do
       cop = Decidim::SpamSignal::CopBot.get(organization)
       cop.update(blocked: true)
